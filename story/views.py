@@ -1,10 +1,15 @@
 from django.shortcuts import render
 from django.http import JsonResponse
+from django_filters import FilterSet
+from django_filters import rest_framework as filters
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework.filters import SearchFilter,OrderingFilter
 from rest_framework import status
+from rest_framework import generics
 from .models import Story,Paragraph,Sentence
 from .serializers import StorySerializer,GetStoriesSerializer
+
 
 # Create your views here.
 
@@ -105,7 +110,6 @@ def postWord(request):
         data = {'errors':'No values in tables'}
         return JsonResponse(data,status = status.HTTP_404_NOT_FOUND)
             
-
 @api_view(['GET'])
 def getStories(request):
     try:
@@ -126,3 +130,43 @@ def getStoryDetails(request,id):
     except Story.DoesNotExist:
         error_data = {'error':'Story does not exist'}
         return JsonResponse(error_data, status = status.HTTP_404_NOT_FOUND)
+
+
+class StoriesListView(generics.ListAPIView):
+    serializer_class = GetStoriesSerializer
+
+    def get_queryset(self):
+        ''' filter the queryset based on Story_title or date created which are query params '''
+        queryset = Story.objects.all()
+        title = self.request.query_params.get('story_title', None)
+        created_on = self.request.query_params.get('date_created', None)
+
+        if title:
+            queryset = queryset.filter(story_title = title)
+            return queryset
+        elif created_on:
+            queryset = queryset.filter(story_date_created__contains = created_on)
+            return queryset
+        return queryset
+
+
+class StoryFilter(FilterSet):
+    title = filters.CharFilter('story_title')
+    created_on = filters.CharFilter(field_name='story_date_created', method = 'filter_created_on')
+
+    def filter_created_on(self, queryset, name, value):
+        queryset = queryset.filter(story_date_created__contains = value)
+        return queryset
+
+    class Meta:
+        model = Story
+        fields = ('title', 'created_on',)
+    
+    
+class StoriesListViewFilter(generics.ListAPIView):
+    queryset = Story.objects.all()
+    serializer_class = GetStoriesSerializer
+    filter_backends = (filters.DjangoFilterBackend,OrderingFilter,SearchFilter)
+    filter_class = StoryFilter
+    ordering_fields  = ['story_date_created','story_date_updated']
+    search_fields  = ['story_title']
